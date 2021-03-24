@@ -39,7 +39,7 @@
     </tbody>
 </table>
 
-## 程式講講
+## 程式說明
 以下程式碼使用 OpenCV 版本 4.5.1 並透過 OpenCV 的 java 介面實作。 
 ### 讀取照片
 首先透過 `Bitmap` 進行圖片讀取，分別載入欲辨識的來源圖片(inputImage)以及目標比對的圖片(targetImage)。
