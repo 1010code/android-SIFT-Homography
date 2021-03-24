@@ -82,8 +82,8 @@ sift.detectAndCompute(imgScene, new Mat(), keypointsScene, descriptorsScene);
 > SIFT Descriptor的作法是針對每個keypoint取16×16大小的像素，再平均切為4×4的cells，每個cells取梯度及角度值統計為8個bins的Histogram，總共16個cells會得到16個histogram（8 bins），可合併成16×8=128維度的資料，最後針對這些資料進行L2-Normalizing，即可得到代表該keypoint的Feature vectors。
 [參考](https://chtseng.wordpress.com/2017/05/22/圖像特徵比對二-特徵點描述及比對/)
 
-## 使用
-在取得影像的 keypoints 以及其特徵向量(local features)後。我們就來處理 feature matching 尋找距離最近的相似點。`DescriptorMatcher.create()` 是用來建立一個執行特徵點匹配運算的實體。如果兩個特徵點的距離愈小，我們就認為它們愈近似。常見的方法有 BruteForce 使用的是Euclidean distance 以及 FLANNBASED 使用快速近似最近鄰搜索算法。
+## Feature matching 關鍵點配對
+在取得影像的關鍵點(keypoints)以及其特徵向量(local features)後。我們就來處理 feature matching 尋找距離最近的相似點。`DescriptorMatcher.create()` 是用來建立一個執行特徵點匹配運算的實體。如果兩個特徵點的距離愈小，我們就認為它們愈近似。常見的方法有 BruteForce 使用的是 Euclidean distance 以及 FLANNBASED 使用快速近似最近鄰搜索算法。使用 KNN，從兩組 local features 中挑選兩兩最近似的成對放置為一組（K參數=2）。逐一取出已配對的 keypoints，若距離差異小於0.75倍(一般建議為0.7~0.8倍)，則認定為符合的關鍵點，放入 listOfGoodMatches 串列，此方式稱為 `David Lowe’s ratio test`，可排除掉不適合的 match。
 
 
 ```java
@@ -106,3 +106,66 @@ MatOfDMatch goodMatches = new MatOfDMatch();
 goodMatches.fromList(listOfGoodMatches);
 Log.e("GoodMatch",listOfGoodMatches.size() + " GoodMatch Found");
  ```
+
+ ## 繪製相吻合關鍵點
+ 接下來就是要透過視覺化繪製出串列 `listOfGoodMatches` 中所有相似度高的關鍵點。除此之外透過計算 Homography，可以找出目標影像中欲辨識物體的位置並且將它框起來。此步驟就是將影像中的目標物利用方框標示出位置。
+
+ ```java
+ /*** Draw matches */
+Utils.bitmapToMat(inputImage, imgObject);
+Utils.bitmapToMat(targetImage, imgScene);
+Mat imgMatches = new Mat();
+Features2d.drawMatches(imgObject, keypointsObject, imgScene, keypointsScene, goodMatches, imgMatches, Scalar.all(-1),
+        Scalar.all(-1), new MatOfByte(), Features2d.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS);
+Imgproc.cvtColor(imgMatches, imgMatches, Imgproc.COLOR_RGBA2BGR);
+//-- Localize the object
+List<Point> obj = new ArrayList<>();
+List<Point> scene = new ArrayList<>();
+List<KeyPoint> listOfKeypointsObject = keypointsObject.toList();
+List<KeyPoint> listOfKeypointsScene = keypointsScene.toList();
+for (int i = 0; i < listOfGoodMatches.size(); i++) {
+    //-- Get the keypoints from the good matches
+    obj.add(listOfKeypointsObject.get(listOfGoodMatches.get(i).queryIdx).pt);
+    scene.add(listOfKeypointsScene.get(listOfGoodMatches.get(i).trainIdx).pt);
+}
+MatOfPoint2f objMat = new MatOfPoint2f(), sceneMat = new MatOfPoint2f();
+objMat.fromList(obj);
+sceneMat.fromList(scene);
+double ransacReprojThreshold = 3.0;
+Mat H = Calib3d.findHomography( objMat, sceneMat, Calib3d.RANSAC, ransacReprojThreshold );
+//-- Get the corners from the image_1 ( the object to be "detected" )
+Mat objCorners = new Mat(4, 1, CvType.CV_32FC2), sceneCorners = new Mat();
+float[] objCornersData = new float[(int) (objCorners.total() * objCorners.channels())];
+objCorners.get(0, 0, objCornersData);
+objCornersData[0] = 0;
+objCornersData[1] = 0;
+objCornersData[2] = imgObject.cols();
+objCornersData[3] = 0;
+objCornersData[4] = imgObject.cols();
+objCornersData[5] = imgObject.rows();
+objCornersData[6] = 0;
+objCornersData[7] = imgObject.rows();
+objCorners.put(0, 0, objCornersData);
+Core.perspectiveTransform(objCorners, sceneCorners, H);
+float[] sceneCornersData = new float[(int) (sceneCorners.total() * sceneCorners.channels())];
+sceneCorners.get(0, 0, sceneCornersData);
+//-- Draw lines between the corners (the mapped object in the scene - image_2 )
+Imgproc.line(imgMatches, new Point(sceneCornersData[0] + imgObject.cols(), sceneCornersData[1]),
+        new Point(sceneCornersData[2] + imgObject.cols(), sceneCornersData[3]), new Scalar(0, 255, 0), 4);
+Imgproc.line(imgMatches, new Point(sceneCornersData[2] + imgObject.cols(), sceneCornersData[3]),
+        new Point(sceneCornersData[4] + imgObject.cols(), sceneCornersData[5]), new Scalar(0, 255, 0), 4);
+Imgproc.line(imgMatches, new Point(sceneCornersData[4] + imgObject.cols(), sceneCornersData[5]),
+        new Point(sceneCornersData[6] + imgObject.cols(), sceneCornersData[7]), new Scalar(0, 255, 0), 4);
+Imgproc.line(imgMatches, new Point(sceneCornersData[6] + imgObject.cols(), sceneCornersData[7]),
+        new Point(sceneCornersData[0] + imgObject.cols(), sceneCornersData[1]), new Scalar(0, 255, 0), 4);
+
+Bitmap bitmap=Bitmap.createBitmap(imgMatches.cols(), imgMatches.rows(), Bitmap.Config.ARGB_4444);
+Imgproc.cvtColor(imgMatches, imgMatches, Imgproc.COLOR_RGBA2BGR);
+Utils.matToBitmap(imgMatches, bitmap);
+imageView.setImageBitmap(bitmap);
+```
+
+## Reference
+- [Features2D + Homography to find a known object](https://docs.opencv.org/4.5.1/d7/dff/tutorial_feature_homography.html)
+- [圖像特徵比對(一)-取得影像的特徵點](https://chtseng.wordpress.com/2017/05/06/圖像特徵比對一-取得影像的特徵點/)
+- [圖像特徵比對(二)-特徵點描述及比對](https://chtseng.wordpress.com/2017/05/22/圖像特徵比對二-特徵點描述及比對/)
