@@ -60,7 +60,7 @@ public class MainActivity extends AppCompatActivity {
         tv = findViewById(R.id.sample_text);
 
         inputImage = BitmapFactory.decodeResource(getResources(), R.drawable.coca_cola);
-        targetImage = BitmapFactory.decodeResource(getResources(), R.drawable.coca_cola_test8);
+        targetImage = BitmapFactory.decodeResource(getResources(), R.drawable.coca_cola_test1);
         imageView = (ImageView) this.findViewById(R.id.imageView);
         sift();
 
@@ -88,9 +88,9 @@ public class MainActivity extends AppCompatActivity {
         /***  Step 2: Matching descriptor vectors with a FLANN based matcher */
         DescriptorMatcher matcher = DescriptorMatcher.create(DescriptorMatcher.FLANNBASED);
         List<MatOfDMatch> knnMatches = new ArrayList<>();
-        matcher.knnMatch(descriptorsObject, descriptorsScene, knnMatches, 2);
+        matcher.knnMatch(descriptorsObject, descriptorsScene, knnMatches, 5);
         //-- Filter matches using the Lowe's ratio test
-        float ratioThresh = 0.75f;
+        float ratioThresh = 0.7f;
         List<DMatch> listOfGoodMatches = new ArrayList<>();
         for (int i = 0; i < knnMatches.size(); i++) {
             if (knnMatches.get(i).rows() > 1) {
